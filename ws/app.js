@@ -174,57 +174,7 @@ async function main() {
   });
   console.log("The WebSocket server is running on port 9010");
 
-
-
-
-
   return 'DB done.';
 }
 
 main();
-
-// main()
-// .then(console.log)
-// .catch(console.error)
-// .finally(() => dbClient.close());
-
-// const wss = new WebSocketServer.Server({ port: 9010 });
-
-
-// wss.on("connection", ws => {
-//   console.log("new client connected");
-
-//   startGame();
-
-//   ws.send(JSON.stringify({ status: "start", message: "Welcome, you are connected!" }));
-
-//   ws.on("message", data => {
-//     let dataStrRes = '';
-//     const dataStr = data.toString();
-//     // const textNum = parseInt(dataStr);
-//     let textNum = parseFloat(dataStr).toFixed(2);
-
-//     console.log('data', dataStr, data, textNum);
-//     if (!isNaN(textNum)) {
-//       if (textNum>100) {
-//         textNum = 100;
-//       }
-//       let roundRes = doRound(textNum);
-
-//       console.log('starting a conversation');
-//       dataStrRes = JSON.stringify({ status: "ok", action: "inprogress", message: "you sent " + textNum, result: roundRes });
-//     }
-//     else {
-//       dataStrRes = JSON.stringify({ status: "error", message: "not a number" });
-//     }
-//     ws.send(dataStrRes);
-//   });
-
-//   ws.on("close", () => {
-//     console.log("the client is disconnected");
-//   });
-//   ws.onerror = function () {
-//     console.log("Some Error occurred")
-//   }
-// });
-// console.log("The WebSocket server is running on port 9010");
