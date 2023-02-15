@@ -1,4 +1,12 @@
 const WebSocketServer = require('ws');
+
+const { MongoClient } = require('mongodb');
+const dbUrl = 'mongodb://localhost:27017';
+const dbClient = new MongoClient(dbUrl);
+const dbName = 'splash44';
+let db;
+let dbCollection;
+
  
 // import WebSocket, { WebSocketServer } from 'ws';
 // const server = createServer({
@@ -8,21 +16,11 @@ const WebSocketServer = require('ws');
 // const wss = new WebSocketServer({ server });
 // server.listen(9010);
 
-// wss.on('connection', function connection(ws) {
-//   ws.on('message', function message(data, isBinary) {
-//     wss.clients.forEach(function each(client) {
-//       if (client !== ws && client.readyState === WebSocket.OPEN) {
-//         client.send(data, { binary: isBinary });
-//       }
-//     });
-//   });
-// });
-
-const wss = new WebSocketServer.Server({ port: 9010 });
-
 let ranks;
+let gameNum = 0;
 let roundNum = 0;
 function startGame() {
+  gameNum++;
   roundNum = 0;
   ranks = {
     p1: 100,
@@ -32,12 +30,37 @@ function startGame() {
     pY: 100
   };
 }
-
-function doRound(pYNum) {
+async function startRound(pYNum) {
   if (roundNum==0 || roundNum==5) {
     startGame();
   }
+  else {
+    let prevRoundResult;
+    try {
+      const filter = {
+        'gameNum': gameNum
+      };
+      const sort = {
+        'roundNum': -1
+      };
+      let prevRoundResults = await dbCollection.find(filter, { sort }).toArray();
+      prevRoundResult = prevRoundResults[0];
+
+      console.log('doRound prevRoundResult =>', prevRoundResult);
+    } catch (error) {
+      console.log('DB error', error);
+    }
+
+    ranks = {
+      p1: prevRoundResult.p1.rank,
+      p2: prevRoundResult.p2.rank,
+      p3: prevRoundResult.p3.rank,
+      p4: prevRoundResult.p4.rank,
+      pY: prevRoundResult.pY.rank
+    };
+  }
   roundNum++;
+
   let roundSecret = parseInt(Math.random() * 1000) / 100;
   let p1Num = parseInt(Math.random() * 1000) / 100;
   let p2Num = parseInt(Math.random() * 1000) / 100;
@@ -79,45 +102,129 @@ function doRound(pYNum) {
     p4: { num: p4Num, rank: p4RankNew },
     pY: { num: pYNum, rank: pYRankNew }
   };
+
+  try {
+    await dbCollection.insertOne({ 
+      gameNum: gameNum,
+      roundNum: roundNum,
+      roundSecret: roundResults.roundSecret,
+      p1: roundResults.p1,
+      p2: roundResults.p2,
+      p3: roundResults.p3,
+      p4: roundResults.p4,
+      pY: roundResults.pY
+      });
+  } catch (error) {
+    console.log('DB error', error);
+  }
+
   return roundResults;
 }
 
+async function main() {
+  await dbClient.connect();
+  console.log('DB connected successfully to server');
+  db = dbClient.db(dbName);
+  dbCollection = db.collection('rounds');
+  const wss = new WebSocketServer.Server({ port: 9010 });
+
+  // just for testing, to check data
+  const findResult = await dbCollection.find({}).toArray();
+  console.log('Found documents =>', findResult);
 
 
-wss.on("connection", ws => {
-  console.log("new client connected");
+  wss.on("connection", ws => {
+    console.log("new client connected");
 
-  startGame();
+    startGame();
+  
+    ws.send(JSON.stringify({ status: "start", message: "Welcome, you are connected!" }));
+  
+    ws.on("message", data => {
+      let dataStrRes = '';
+      const dataStr = data.toString();
+      let textNum = parseFloat(dataStr).toFixed(2);
+  
+      console.log('data', dataStr, data, textNum);
+      if (!isNaN(textNum)) {
+        if (textNum>100) {
+          textNum = 100;
+        }
+        console.log('starting a round');
+        const promise = startRound(textNum);
+        promise.then((roundRes) => {
+          console.log('round complete', roundRes);
 
-  ws.send(JSON.stringify({ status: "start", message: "Welcome, you are connected!" }));
-
-  ws.on("message", data => {
-    let dataStrRes = '';
-    const dataStr = data.toString();
-    // const textNum = parseInt(dataStr);
-    let textNum = parseFloat(dataStr).toFixed(2);
-
-    console.log('data', dataStr, data, textNum);
-    if (!isNaN(textNum)) {
-      if (textNum>100) {
-        textNum = 100;
+          dataStrRes = JSON.stringify({ status: "ok", action: "inprogress", message: "you sent " + textNum, result: roundRes });
+          ws.send(dataStrRes);
+        });
       }
-      let roundRes = doRound(textNum);
-
-      console.log('starting a conversation');
-      dataStrRes = JSON.stringify({ status: "ok", action: "inprogress", message: "you sent " + textNum, result: roundRes });
+      else {
+        dataStrRes = JSON.stringify({ status: "error", message: "not a number" });
+        ws.send(dataStrRes);
+      }
+    });
+  
+    ws.on("close", () => {
+      console.log("the client is disconnected");
+    });
+    ws.onerror = function () {
+      console.log("Some Error occurred")
     }
-    else {
-      dataStrRes = JSON.stringify({ status: "error", message: "not a number" });
-    }
-    ws.send(dataStrRes);
   });
+  console.log("The WebSocket server is running on port 9010");
 
-  ws.on("close", () => {
-    console.log("the client is disconnected");
-  });
-  ws.onerror = function () {
-    console.log("Some Error occurred")
-  }
-});
-console.log("The WebSocket server is running on port 9010");
+
+
+
+
+  return 'DB done.';
+}
+
+main();
+
+// main()
+// .then(console.log)
+// .catch(console.error)
+// .finally(() => dbClient.close());
+
+// const wss = new WebSocketServer.Server({ port: 9010 });
+
+
+// wss.on("connection", ws => {
+//   console.log("new client connected");
+
+//   startGame();
+
+//   ws.send(JSON.stringify({ status: "start", message: "Welcome, you are connected!" }));
+
+//   ws.on("message", data => {
+//     let dataStrRes = '';
+//     const dataStr = data.toString();
+//     // const textNum = parseInt(dataStr);
+//     let textNum = parseFloat(dataStr).toFixed(2);
+
+//     console.log('data', dataStr, data, textNum);
+//     if (!isNaN(textNum)) {
+//       if (textNum>100) {
+//         textNum = 100;
+//       }
+//       let roundRes = doRound(textNum);
+
+//       console.log('starting a conversation');
+//       dataStrRes = JSON.stringify({ status: "ok", action: "inprogress", message: "you sent " + textNum, result: roundRes });
+//     }
+//     else {
+//       dataStrRes = JSON.stringify({ status: "error", message: "not a number" });
+//     }
+//     ws.send(dataStrRes);
+//   });
+
+//   ws.on("close", () => {
+//     console.log("the client is disconnected");
+//   });
+//   ws.onerror = function () {
+//     console.log("Some Error occurred")
+//   }
+// });
+// console.log("The WebSocket server is running on port 9010");
